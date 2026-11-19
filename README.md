@@ -1,5 +1,9 @@
 # github-core-clone v3
 
+[![make.fun · github-core-clone-01](https://make.fun/badge/github-core-clone-01.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![rank](https://make.fun/badge/github-core-clone-01/Cm11w/github-core-clone-v3f/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![reward](https://make.fun/badge/github-core-clone-01/Cm11w/github-core-clone-v3f/reward.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+
 A GitHub-compatible git forge in stdlib-only Node TypeScript: git
 smart-HTTP (protocol v0 + v2), REST v3, GraphQL v4, and MCP over
 Streamable HTTP. Built from scratch for the `github-core-clone-01`
