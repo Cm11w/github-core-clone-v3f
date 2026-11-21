@@ -56,9 +56,21 @@ export function parsePackets(
   let off = 0;
   while (off < buf.length) {
     if (off + 4 > buf.length) throw new PktError('truncated pkt-line');
-    const hex = buf.toString('ascii', off, off + 4);
-    if (!/^[0-9a-fA-F]{4}$/.test(hex)) throw new PktError('bad pkt-line length');
-    const len = Number.parseInt(hex, 16);
+    // Parse the 4-hex-digit length straight from the bytes instead of
+    // allocating a string + regex + parseInt per packet. Node's 'ascii'
+    // decoding masks bytes to 7 bits, so the old regex test on the decoded
+    // string accepted e.g. 0xB0 as '0'; the & 0x7f mask below keeps the
+    // accept/reject behavior byte-identical (including malformed input).
+    let len = 0;
+    for (let i = 0; i < 4; i++) {
+      const c = buf[off + i]! & 0x7f;
+      let v: number;
+      if (c >= 48 && c <= 57) v = c - 48; // '0'-'9'
+      else if (c >= 97 && c <= 102) v = c - 87; // 'a'-'f'
+      else if (c >= 65 && c <= 70) v = c - 55; // 'A'-'F'
+      else throw new PktError('bad pkt-line length');
+      len = (len << 4) | v;
+    }
     if (len === 0) {
       packets.push({ kind: 'flush', data: Buffer.alloc(0) });
       off += 4;
@@ -105,26 +117,33 @@ const RECEIVE_CAPS = (symref: string): string =>
 
 interface AdvertCache {
   gen: number;
-  upload: Buffer;
-  receive: Buffer;
+  upload?: Buffer;
+  receive?: Buffer;
 }
 
 const advertCache = new Map<number, AdvertCache>();
 
 // Build v0 advertisement with peeled tag lines (needs the object store).
+// Only the requested variant is built on a cache miss; the other variant
+// is built lazily on first request. The bytes are identical to building
+// both eagerly: buildV0 is deterministic for a given (repo, service, gen),
+// and refs cannot change without bumping gen (which drops the entry).
 export function v0Advertisement(forge: Forge, repo: Repo, service: 'upload' | 'receive'): Buffer {
   const cached = advertCache.get(repo.id);
   if (cached && cached.gen === repo.gen) {
-    return service === 'upload' ? cached.upload : cached.receive;
+    const hit = service === 'upload' ? cached.upload : cached.receive;
+    if (hit) return hit;
+    const built = buildV0(forge, repo, service);
+    if (service === 'upload') cached.upload = built;
+    else cached.receive = built;
+    return built;
   }
-  // Build both variants on a cache miss so the other service is free.
-  const entry: AdvertCache = {
-    gen: repo.gen,
-    upload: buildV0(forge, repo, 'upload'),
-    receive: buildV0(forge, repo, 'receive'),
-  };
+  const entry: AdvertCache = { gen: repo.gen };
+  const built = buildV0(forge, repo, service);
+  if (service === 'upload') entry.upload = built;
+  else entry.receive = built;
   advertCache.set(repo.id, entry);
-  return service === 'upload' ? entry.upload : entry.receive;
+  return built;
 }
 
 function buildV0(forge: Forge, repo: Repo, service: 'upload' | 'receive'): Buffer {

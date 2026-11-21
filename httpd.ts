@@ -115,6 +115,31 @@ export function labelObject(label: Label): Record<string, unknown> {
   };
 }
 
+// Per-repo URL prefixes for issue JSON. The three URL fields share two
+// prefixes, so cache them per repo instead of rebuilding them 3x per call.
+// Repo names never change after creation (no rename path), but the cached
+// name is re-checked on every hit so a rename would rebuild instead of
+// serving a stale prefix. WeakMap so deleted repos do not leak entries.
+interface IssueUrlPrefix {
+  name: string;
+  api: string; // `${BASE_URL}/api/v3/repos/${VIEWER_LOGIN}/${repo.name}`
+  html: string; // `${BASE_URL}/${VIEWER_LOGIN}/${repo.name}`
+}
+
+const issueUrlPrefixes = new WeakMap<Repo, IssueUrlPrefix>();
+
+function issueUrls(repo: Repo): IssueUrlPrefix {
+  const cached = issueUrlPrefixes.get(repo);
+  if (cached && cached.name === repo.name) return cached;
+  const entry: IssueUrlPrefix = {
+    name: repo.name,
+    api: `${BASE_URL}/api/v3/repos/${VIEWER_LOGIN}/${repo.name}`,
+    html: `${BASE_URL}/${VIEWER_LOGIN}/${repo.name}`,
+  };
+  issueUrlPrefixes.set(repo, entry);
+  return entry;
+}
+
 // Single canonical issue serializer, used by create + GET + lists + MCP.
 export function issueJsonString(repo: Repo, issue: Issue): string {
   let labels = '';
@@ -125,6 +150,7 @@ export function issueJsonString(repo: Repo, issue: Issue): string {
     labels += labelJsonString(label);
   }
   const n = issue.number;
+  const urls = issueUrls(repo);
   return (
     `{"id":${issue.id},"node_id":${js(issue.nodeId)},"number":${n},` +
     `"title":${js(issue.title)},"body":${js(issue.body)},"state":${js(issue.state)},` +
@@ -132,9 +158,9 @@ export function issueJsonString(repo: Repo, issue: Issue): string {
     `"locked":false,"milestone":null,"comments":${issue.comments.length},` +
     `"created_at":${js(EPOCH_ISO)},"updated_at":${js(EPOCH_ISO)},` +
     `"closed_at":${issue.closedAt ? js(issue.closedAt) : 'null'},` +
-    `"url":${js(`${BASE_URL}/api/v3/repos/${VIEWER_LOGIN}/${repo.name}/issues/${n}`)},` +
-    `"html_url":${js(`${BASE_URL}/${VIEWER_LOGIN}/${repo.name}/issues/${n}`)},` +
-    `"comments_url":${js(`${BASE_URL}/api/v3/repos/${VIEWER_LOGIN}/${repo.name}/issues/${n}/comments`)}}`
+    `"url":${js(`${urls.api}/issues/${n}`)},` +
+    `"html_url":${js(`${urls.html}/issues/${n}`)},` +
+    `"comments_url":${js(`${urls.api}/issues/${n}/comments`)}}`
   );
 }
 
